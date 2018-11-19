@@ -208,15 +208,15 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
         {
             StringWriter w = new StringWriter();
 
-            w.WriteLine("--- Types ---");
+            w.WriteLine("// --- Types ---");
             w.Write(this.Types.ToString());
             w.WriteLine();
 
-            w.WriteLine("--- Stubs ---");
+            w.WriteLine("// --- Stubs ---");
             w.Write(this.Stubs.ToString());
             w.WriteLine();
 
-            w.WriteLine("--- Tests ---");
+            w.WriteLine("// --- Tests ---");
             w.Write(this.Tests.ToString());
             w.WriteLine();
 
@@ -231,7 +231,8 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
     class CodeGen
     {
-        CSharpSourceCode cs_types;
+        CSharpSourceCode cs_types, cs_stubs;
+
         CSharpCompiler csc;
 
         public CodeGen()
@@ -243,6 +244,9 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             cs_types = new CSharpSourceCode(Path.Combine(CodeGenUtil.ProjectDir, @"VpnServerRpc\VPNServerRpcTypes.cs"));
             csc.AddSourceCode(cs_types);
+
+            cs_stubs = new CSharpSourceCode(Path.Combine(CodeGenUtil.ProjectDir, @"VpnServerRpc\VPNServerRpc.cs"));
+            csc.AddSourceCode(cs_stubs);
 
             csc.Compile();
         }
@@ -380,7 +384,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                         case IFieldSymbol field:
                             if (field.IsConst && field.IsDefinition)
                             {
-                                ts.WriteLine($"    {field.Name} = {field.ConstantValue};");
+                                ts.WriteLine($"    {field.Name} = {field.ConstantValue},");
                             }
                             break;
                     }
@@ -393,11 +397,80 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
             }
         }
 
+        void generate_stubs(GeneratedCodeForLang ret)
+        {
+            var model = cs_stubs.Model;
+
+            var rpc_class = cs_stubs.Root.DescendantNodes().OfType<ClassDeclarationSyntax>().Where(c => c.Identifier.Text == "VpnServerRpc").First();
+
+            var members = model.GetDeclaredSymbol(rpc_class).GetMembers();
+
+            var methods = members.Where(m => m is IMethodSymbol).Select(m => m as IMethodSymbol).Where(m => m.IsStatic == false)
+                .Where(m => m.IsAsync).Where(m => m.Name != "CallAsync");
+
+            foreach (var method in methods)
+            {
+                string method_name = method.Name;
+                if (method_name.EndsWith("Async") == false) throw new ApplicationException($"{method.Name}: method_name = {method_name}");
+                method_name = method_name.Substring(0, method_name.Length - 5);
+
+                INamedTypeSymbol ret_type = (INamedTypeSymbol)method.ReturnType;
+                if (ret_type.Name != "Task") throw new ApplicationException($"{method.Name}: ret_type.Name = {ret_type.Name}");
+
+                var ret_type_args = ret_type.TypeArguments;
+                if (ret_type_args.Length != 1) throw new ApplicationException($"{method.Name}: type_args.Length = {ret_type_args.Length}");
+
+                var ret_type_name = ret_type_args[0].Name;
+
+                if (method.Parameters.Length >= 2) throw new ApplicationException($"{method.Name}: method.Parameters.Length = {method.Parameters.Length}");
+
+                if (method.DeclaringSyntaxReferences.Length != 1) throw new ApplicationException($"{method.Name}: method.DeclaringSyntaxReferences.Length = {method.DeclaringSyntaxReferences.Length}");
+
+                MethodDeclarationSyntax syntax = (MethodDeclarationSyntax)method.DeclaringSyntaxReferences[0].GetSyntax();
+                if (syntax.Body != null) throw new ApplicationException($"{method.Name}: syntax.Body != null");
+                if (syntax.ExpressionBody == null) throw new ApplicationException($"{method.Name}: syntax.ExpressionBody == null");
+
+                ArrowExpressionClauseSyntax body = syntax.ExpressionBody;
+                InvocationExpressionSyntax invoke = body.DescendantNodes().OfType<InvocationExpressionSyntax>().Single();
+
+                if (model.GetSymbolInfo(invoke.Expression).Symbol.Name != "CallAsync") throw new ApplicationException($"{method.Name}: model.GetSymbolInfo(invoke.Expression).Symbol.Name = {model.GetSymbolInfo(invoke.Expression).Symbol.Name}");
+
+                if (invoke.ArgumentList.Arguments.Count != 2) throw new ApplicationException($"{method.Name}: invoke.ArgumentList.Arguments.Count = {invoke.ArgumentList.Arguments.Count}");
+
+                LiteralExpressionSyntax str_syntax = (LiteralExpressionSyntax)invoke.ArgumentList.Arguments[0].Expression;
+
+                string str = str_syntax.Token.Text;
+
+                StringWriter ts = new StringWriter();
+
+                if (method.Parameters.Length == 0)
+                {
+                    ts.WriteLine($"    public {method_name} = (): Promise<{ret_type_name}> =>");
+                    ts.WriteLine("    {");
+                    ts.WriteLine($"        return this.CallAsync<{ret_type_name}>({str}, new {ret_type_name}());");
+                    ts.WriteLine("    }");
+                    ts.WriteLine("    ");
+                }
+                else
+                {
+                    ts.WriteLine($"    public {method_name} = (in_param: {ret_type_name}): Promise<{ret_type_name}> =>");
+                    ts.WriteLine("    {");
+                    ts.WriteLine($"        return this.CallAsync<{ret_type_name}>({str}, in_param);");
+                    ts.WriteLine("    }");
+                    ts.WriteLine("    ");
+                }
+
+                ret.TypeScript.Stubs.AddPart(method.DeclaringSyntaxReferences[0].Span.Start, ts.ToString());
+            }
+        }
+
         public GeneratedCodeForLang GenerateCodes()
         {
             GeneratedCodeForLang ret = new GeneratedCodeForLang();
 
             generate_types(ret);
+
+            generate_stubs(ret);
 
             return ret;
         }
