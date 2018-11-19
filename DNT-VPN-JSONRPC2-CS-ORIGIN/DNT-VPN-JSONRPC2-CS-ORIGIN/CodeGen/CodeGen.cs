@@ -175,7 +175,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
         public string Text = "";
     }
 
-    class GeneratedCode
+    class GeneratedCodeSection
     {
         public List<GeneratedCodePart> PartList = new List<GeneratedCodePart>();
 
@@ -198,9 +198,35 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
         }
     }
 
-    class GeneratedCodeList
+    class GeneratedCode
     {
-        public GeneratedCode TS = new GeneratedCode();
+        public GeneratedCodeSection Types = new GeneratedCodeSection();
+        public GeneratedCodeSection Stubs = new GeneratedCodeSection();
+        public GeneratedCodeSection Tests = new GeneratedCodeSection();
+
+        public override string ToString()
+        {
+            StringWriter w = new StringWriter();
+
+            w.WriteLine("--- Types ---");
+            w.Write(this.Types.ToString());
+            w.WriteLine();
+
+            w.WriteLine("--- Stubs ---");
+            w.Write(this.Stubs.ToString());
+            w.WriteLine();
+
+            w.WriteLine("--- Tests ---");
+            w.Write(this.Tests.ToString());
+            w.WriteLine();
+
+            return w.ToString();
+        }
+    }
+
+    class GeneratedCodeForLang
+    {
+        public GeneratedCode TypeScript = new GeneratedCode();
     }
 
     class CodeGen
@@ -221,7 +247,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
             csc.Compile();
         }
 
-        void generate_types(GeneratedCodeList ret)
+        void generate_types(GeneratedCodeForLang ret)
         {
             var model = cs_types.Model;
 
@@ -259,7 +285,16 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                                             ts_type = "boolean";
                                             break;
 
+                                        case "DateTime":
+                                            ts_type = "Date";
+                                            break;
+
                                         default:
+                                            if (type.TypeKind == TypeKind.Enum)
+                                            {
+                                                ts_type = type.Name;
+                                                break;
+                                            }
                                             throw new ApplicationException($"{c.Identifier}.{member.Name}: type.Name = {type.Name}");
                                     }
                                     break;
@@ -274,21 +309,27 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                                             {
                                                 case "UInt32":
                                                 case "UInt64":
-                                                    ts_type = "number";
+                                                    ts_type = "number[]";
                                                     break;
 
                                                 case "String":
-                                                    ts_type = "string";
+                                                    ts_type = "string[]";
                                                     break;
 
                                                 case "Boolean":
-                                                    ts_type = "boolean";
+                                                    ts_type = "boolean[]";
                                                     break;
 
                                                 case "Byte":
+                                                    ts_type = "Uint8Array";
                                                     break;
 
                                                 default:
+                                                    if (type2.ContainingAssembly.Name == csc.AssemblyName)
+                                                    {
+                                                        ts_type = type2.Name + "[]";
+                                                        break;
+                                                    }
                                                     throw new ApplicationException($"{c.Identifier}.{member.Name}: type2.Name = {type2.Name}");
                                             }
                                             break;
@@ -301,6 +342,11 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
                                 default:
                                     throw new ApplicationException($"{c.Identifier}.{member.Name}: type.Kind = {type.Kind}");
+                            }
+
+                            if (string.IsNullOrEmpty(ts_type) == false)
+                            {
+                                ts.WriteLine($"    {field.Name}?: {ts_type};");
                             }
                             break;
 
@@ -315,13 +361,41 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                 ts.WriteLine("}");
                 ts.WriteLine();
 
-                ret.TS.AddPart(c.SpanStart, ts.ToString());
+                ret.TypeScript.Types.AddPart(c.SpanStart, ts.ToString());
+            }
+
+            var enum_list = cs_types.Root.DescendantNodes().OfType<EnumDeclarationSyntax>();
+
+            foreach (EnumDeclarationSyntax e in enum_list)
+            {
+                StringWriter ts = new StringWriter();
+
+                ts.WriteLine($"export enum {e.Identifier.Text}");
+                ts.WriteLine("{");
+
+                foreach (var member in model.GetDeclaredSymbol(e).GetMembers())
+                {
+                    switch (member)
+                    {
+                        case IFieldSymbol field:
+                            if (field.IsConst && field.IsDefinition)
+                            {
+                                ts.WriteLine($"    {field.Name} = {field.ConstantValue};");
+                            }
+                            break;
+                    }
+                }
+
+                ts.WriteLine("}");
+                ts.WriteLine();
+
+                ret.TypeScript.Types.AddPart(e.SpanStart, ts.ToString());
             }
         }
 
-        public GeneratedCodeList GenerateCodes()
+        public GeneratedCodeForLang GenerateCodes()
         {
-            GeneratedCodeList ret = new GeneratedCodeList();
+            GeneratedCodeForLang ret = new GeneratedCodeForLang();
 
             generate_types(ret);
 
@@ -330,9 +404,9 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
         public void Test()
         {
-            GeneratedCodeList ret = GenerateCodes();
+            GeneratedCodeForLang ret = GenerateCodes();
 
-            Console.WriteLine(ret.TS.ToString());
+            Console.WriteLine(ret.TypeScript.ToString());
 
             return;
             var model = cs_types.Model;
