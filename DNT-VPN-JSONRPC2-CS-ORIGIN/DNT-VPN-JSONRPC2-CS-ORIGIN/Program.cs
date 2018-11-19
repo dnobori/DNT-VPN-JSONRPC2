@@ -1,4 +1,5 @@
 ﻿using System;
+using DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen;
 using SoftEther.JsonRpc;
 using SoftEther.VPNServerRpc;
 
@@ -8,18 +9,24 @@ namespace DNT_VPN_JSONRPC
     {
         static void Main(string[] args)
         {
-            VPNRPCTest test = new VPNRPCTest();
+            //Console.WriteLine(CodeGenUtil.ProjectDir);
 
-            int i = 0;
+            CodeGen g = new CodeGen();
 
-            for (i = 0; ; i++)
-            {
-                Console.WriteLine("-------------");
-                Console.WriteLine($"Test #{i} start");
-                test.Test_All();
-                Console.WriteLine($"Test #{i} finish");
-                Console.WriteLine("-------------");
-            }
+            g.Test();
+
+            //VPNRPCTest test = new VPNRPCTest();
+
+            //int i = 0;
+
+            //for (i = 0; ; i++)
+            //{
+            //    Console.WriteLine("-------------");
+            //    Console.WriteLine($"Test #{i} start");
+            //    test.Test_All();
+            //    Console.WriteLine($"Test #{i} finish");
+            //    Console.WriteLine("-------------");
+            //}
 
             //Tools.GenCode1();
 
