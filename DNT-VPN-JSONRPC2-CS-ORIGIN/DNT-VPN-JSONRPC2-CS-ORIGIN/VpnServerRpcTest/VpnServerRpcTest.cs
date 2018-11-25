@@ -9,11 +9,15 @@ namespace DNT_VPN_JSONRPC
 {
     class VPNRPCTest
     {
+        int a = (1 + 2) * 3;
+
         VpnServerRpc Rpc;
 
-        Random rand = new Random();
+        Random rand = new Random(123);
 
-        string hub_name;
+        Random[] aaa = new Random[3];
+
+        string hub_name = "def";
 
         public VPNRPCTest()
         {
@@ -22,6 +26,12 @@ namespace DNT_VPN_JSONRPC
 
         public void Test_All()
         {
+            int b, c, f;
+            int a = (1 + 2) * 3;
+            int[] arr = { 1, 2, 3 };
+            int[,] arr2 = new int[1, 2];
+            int[][] arr3 = new int[1][] {new int [2]};
+
             hub_name = "TEST";
 
             Test_Test();
@@ -54,6 +64,14 @@ namespace DNT_VPN_JSONRPC
                 }
 
                 Test_GetFarmConnectionStatus();
+            }
+            else if (false)
+            {
+                Console.WriteLine("abc");
+            }
+            else
+            {
+                Console.WriteLine("def");
             }
 
             Test_GetServerCert();
@@ -215,7 +233,7 @@ namespace DNT_VPN_JSONRPC
                 break;
             }
 
-            Test_SetSysLog();
+            Test_SetSysLog(true);
             Test_GetSysLog();
             Test_SetSysLog(false);
 
@@ -271,7 +289,7 @@ namespace DNT_VPN_JSONRPC
 
             VpnRpcTest b = Rpc.Test(a);
 
-            Debug.Assert(a.IntValue_u32.ToString() == b.StrValue_str);
+            print_object(b);
 
             Console.WriteLine("End: Test_Test");
             Console.WriteLine("-----");
@@ -582,7 +600,7 @@ namespace DNT_VPN_JSONRPC
         /// </summary>
         public string Test_CreateHub()
         {
-            string hub_name = $"Test_{rand.Next(100000, 999999)}";
+            string hub_name = "Test_" + rand.Next(100000, 999999);
             Console.WriteLine("Begin: Test_CreateHub");
 
             VpnRpcCreateHub in_rpc_create_hub = new VpnRpcCreateHub()
@@ -2724,7 +2742,7 @@ namespace DNT_VPN_JSONRPC
         /// <summary>
         /// API test for 'SetSysLog', Set syslog function setting
         /// </summary>
-        public void Test_SetSysLog(bool flag = true)
+        public void Test_SetSysLog(bool flag)
         {
             Console.WriteLine("Begin: Test_SetSysLog");
 
