@@ -10,6 +10,12 @@ using static System.Console;
 
 namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 {
+    public enum TargetLang
+    {
+        CSharp,
+        TypeScript,
+    }
+
     static class CodeGenUtil
     {
         public static string AppExeDir;
@@ -456,7 +462,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                 }
                 else
                 {
-                    ts.WriteLine($"    public {method_name} = (in_param: {ret_type_name}): Promise<{ret_type_name}> =>");
+                    ts.WriteLine($"    public {method_name} = (in_param?: {ret_type_name}): Promise<{ret_type_name}> =>");
                     ts.WriteLine("    {");
                     ts.WriteLine($"        return this.CallAsync<{ret_type_name}>({str}, in_param);");
                     ts.WriteLine("    }");
@@ -467,140 +473,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
             }
         }
 
-        class MyWalker : CSharpSyntaxWalker
-        {
-            List<(string line, int depth)> codes = new List<(string line, int depth)>();
-            protected int CurrentDepth = 0;
-            const int TabSpace = 4;
-            protected CSharpSourceCode Src;
-
-            public MyWalker(CSharpSourceCode src) : base(SyntaxWalkerDepth.StructuredTrivia)
-            {
-                this.Src = src;
-            }
-
-            public void Emit(string line)
-            {
-                this.codes.Add((line, this.CurrentDepth));
-            }
-
-            public override string ToString()
-            {
-                StringWriter w = new StringWriter();
-                this.codes.ForEach(x =>
-                {
-                    w.WriteLine(new string(' ', TabSpace * x.depth) + x.line);
-                });
-                return w.ToString();
-            }
-
-            public void MergeCodesFrom(MyWalker other)
-            {
-                other.codes.ForEach(x =>
-                {
-                    this.codes.Add((x.line, x.depth + 1));
-                });
-            }
-        }
-
-        class ExpressionWalker : MyWalker
-        {
-            public ExpressionWalker(CSharpSourceCode src) : base(src) { }
-
-            public override void VisitExpressionStatement(ExpressionStatementSyntax node)
-            {
-                base.VisitExpressionStatement(node);
-            }
-        }
-
-        class BlockWalker : MyWalker
-        {
-            public BlockWalker(CSharpSourceCode src) : base(src) { }
-
-            public override void VisitBlock(BlockSyntax node)
-            {
-                base.VisitBlock(node);
-            }
-
-            public override void VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)
-            {
-                var dec = node.Declaration;
-                var type = dec.Type;
-                var vars = dec.Variables;
-
-                foreach (var v in vars)
-                {
-                    var type_dec = Src.Model.GetTypeInfo(type);
-                    var v_dec = Src.Model.GetDeclaredSymbol(v);
-                    Emit($"{type_dec.Type.Name} {v_dec.Name};");
-                }
-            }
-        }
-
-        class MethodWalker : MyWalker
-        {
-            public MethodWalker(CSharpSourceCode src) : base(src) { }
-
-            public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
-            {
-                var m = Src.Model.GetDeclaredSymbol(node);
-
-                string params_str = "";
-                var param_list = m.Parameters;
-                foreach (var param in param_list)
-                {
-                    if (string.IsNullOrEmpty(params_str) == false) params_str += ", ";
-
-                    params_str += $"{param.Type.Name} {param.Name}";
-                }
-
-                Emit($"{m.ReturnType.Name} {m.Name}({params_str})");
-                Emit("{");
-
-                //base.VisitMethodDeclaration(node);
-
-                BlockWalker w = new BlockWalker(Src);
-                w.VisitBlock(node.Body);
-                MergeCodesFrom(w);
-
-                Emit("}");
-            }
-        }
-
-        class ClassWalker : MyWalker
-        {
-            public ClassWalker(CSharpSourceCode src) : base(src) { }
-
-            public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
-            {
-                MethodWalker w = new MethodWalker(Src);
-                w.VisitMethodDeclaration(node);
-                MergeCodesFrom(w);
-            }
-
-            public override void VisitClassDeclaration(ClassDeclarationSyntax node)
-            {
-                Emit($"class {node.Identifier.Text}");
-                Emit("{");
-                base.VisitClassDeclaration(node);
-                Emit("}");
-            }
-        }
-
-        class TestWalker2 : MyWalker
-        {
-            public TestWalker2(CSharpSourceCode src) : base(src) { }
-
-            public override void VisitClassDeclaration(ClassDeclarationSyntax node)
-            {
-                ClassWalker w = new ClassWalker(Src);
-                w.Visit(node);
-                MergeCodesFrom(w);
-                //base.VisitClassDeclaration(node);
-            }
-        }
-
-        class TestWalker :  CSharpSyntaxWalker
+        class CcWalker :  CSharpSyntaxWalker
         {
             StringWriter w = new StringWriter();
 
@@ -610,9 +483,56 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
             const int TabSpace = 4;
             CSharpSourceCode src;
 
-            public TestWalker(CSharpSourceCode src) : base(SyntaxWalkerDepth.StructuredTrivia)
+            TargetLang lang;
+
+            public CcWalker(CSharpSourceCode src, TargetLang lang) : base(SyntaxWalkerDepth.StructuredTrivia)
             {
                 this.src = src;
+                this.lang = lang;
+            }
+
+            string convert_type(string src)
+            {
+                if (lang == TargetLang.TypeScript)
+                {
+                    if (src.StartsWith("Vpn"))
+                    {
+                        src = "VPN." + src;
+                    }
+
+                    if (src == "int" || src == "uint" || src == "long" || src == "ulong")
+                    {
+                        src = "number";
+                    }
+
+                    if (src == "bool")
+                    {
+                        src = "boolean";
+                    }
+
+                    if (src == "DateTime")
+                    {
+                        src = "Date";
+                    }
+                }
+                return src;
+            }
+
+            string convert_function(string src)
+            {
+                if (lang == TargetLang.TypeScript)
+                {
+                    if (src == "Console.WriteLine" || src == "print_object")
+                    {
+                        src = "console.log";
+                    }
+
+                    if (src.StartsWith("api.") || src.StartsWith("Test_"))
+                    {
+                        src = "await " + src;
+                    }
+                }
+                return src;
             }
 
             void _emit_internal(string str, bool new_line)
@@ -668,22 +588,49 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
             {
-                emit("public");
-                emit(" ");
-                Visit(node.ReturnType);
-                emit(" ");
-                emit(node.Identifier.Text);
-                Visit(node.ParameterList);
-                emit_line("");
+                if (lang == TargetLang.TypeScript)
+                {
+                    if (node.Identifier.Text == "print_object") return;
 
-                Visit(node.Body);
+                    emit("async function ");
+                    emit(node.Identifier.Text);
+                    Visit(node.ParameterList);
+                    emit(": ");
+                    emit("Promise<");
+                    Visit(node.ReturnType);
+                    emit(">");
+                    emit_line("");
+
+                    Visit(node.Body);
+                }
+                else
+                {
+                    emit("public");
+                    emit(" ");
+                    Visit(node.ReturnType);
+                    emit(" ");
+                    emit(node.Identifier.Text);
+                    Visit(node.ParameterList);
+                    emit_line("");
+
+                    Visit(node.Body);
+                }
             }
 
             public override void VisitParameter(ParameterSyntax node)
             {
-                Visit(node.Type);
-                emit(" ");
-                emit($"{node.Identifier.Text}");
+                if (lang == TargetLang.TypeScript)
+                {
+                    emit($"{node.Identifier.Text}?");
+                    emit(": ");
+                    Visit(node.Type);
+                }
+                else
+                {
+                    Visit(node.Type);
+                    emit(" ");
+                    emit($"{node.Identifier.Text}");
+                }
             }
 
             public override void VisitParameterList(ParameterListSyntax node)
@@ -724,11 +671,33 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public override void VisitAssignmentExpression(AssignmentExpressionSyntax node)
             {
-                Visit(node.Left);
+                if (lang == TargetLang.TypeScript)
+                {
+                    if (node.Parent.Kind() == SyntaxKind.ObjectInitializerExpression)
+                    {
+                        Visit(node.Left);
 
-                emit(" = ");
+                        emit(": ");
 
-                Visit(node.Right);
+                        Visit(node.Right);
+                    }
+                    else
+                    {
+                        Visit(node.Left);
+
+                        emit(" = ");
+
+                        Visit(node.Right);
+                    }
+                }
+                else
+                {
+                    Visit(node.Left);
+
+                    emit(" = ");
+
+                    Visit(node.Right);
+                }
             }
 
             public override void VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
@@ -742,10 +711,17 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public override void VisitCastExpression(CastExpressionSyntax node)
             {
-                emit("(");
-                Visit(node.Type);
-                emit(")");
-                Visit(node.Expression);
+                if (lang == TargetLang.TypeScript)
+                {
+                    Visit(node.Expression);
+                }
+                else
+                {
+                    emit("(");
+                    Visit(node.Type);
+                    emit(")");
+                    Visit(node.Expression);
+                }
             }
 
             public override void VisitBreakStatement(BreakStatementSyntax node)
@@ -770,21 +746,33 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public override void VisitForEachStatement(ForEachStatementSyntax node)
             {
-                emit("foreach (");
+                if (lang == TargetLang.TypeScript)
+                {
+                    emit("for (let ");
+                    emit(node.Identifier.Text);
+                    emit(" of ");
+                    Visit(node.Expression);
+                    emit_line("!)");
+                    Visit(node.Statement);
+                }
+                else
+                {
+                    emit("foreach (");
 
-                Visit(node.Type);
+                    Visit(node.Type);
 
-                emit(" ");
+                    emit(" ");
 
-                emit(node.Identifier.Text);
+                    emit(node.Identifier.Text);
 
-                emit(" in ");
+                    emit(" in ");
 
-                Visit(node.Expression);
+                    Visit(node.Expression);
 
-                emit_line(")");
+                    emit_line(")");
 
-                Visit(node.Statement);
+                    Visit(node.Statement);
+                }
             }
 
             public override void VisitExpressionStatement(ExpressionStatementSyntax node)
@@ -828,65 +816,157 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public override void VisitInitializerExpression(InitializerExpressionSyntax node)
             {
-                if (node.Kind() == SyntaxKind.ArrayInitializerExpression)
+                if (lang == TargetLang.TypeScript)
                 {
-                    emit("{ ");
-                    current_depth++;
-
-                    foreach (var exp in node.Expressions)
+                    if (node.Kind() == SyntaxKind.ArrayInitializerExpression)
                     {
-                        this.Visit(exp);
+                        bool is_byte_array = false;
 
-                        emit(", ");
+                        if (node.Parent.Kind() == SyntaxKind.ArrayCreationExpression &&
+                            ((ArrayCreationExpressionSyntax)node.Parent).Type.ElementType.ToString() == "byte")
+                        {
+                            is_byte_array = true;
+                        }
+
+                        if (is_byte_array)
+                        {
+                            emit("new Uint8Array(");
+                        }
+
+                        emit("[ ");
+                        current_depth++;
+
+                        foreach (var exp in node.Expressions)
+                        {
+                            this.Visit(exp);
+
+                            emit(", ");
+                        }
+
+                        current_depth--;
+                        emit(" ]");
+
+                        if (is_byte_array)
+                        {
+                            emit(")");
+                        }
                     }
+                    else
+                    {
+                        emit_line("{");
+                        current_depth++;
 
-                    current_depth--;
-                    emit(" }");
+                        foreach (var exp in node.Expressions)
+                        {
+                            this.Visit(exp);
+
+                            emit_line(",");
+                        }
+
+                        current_depth--;
+                        emit("}");
+                    }
                 }
                 else
                 {
-                    emit_line("{");
-                    current_depth++;
-
-                    foreach (var exp in node.Expressions)
+                    if (node.Kind() == SyntaxKind.ArrayInitializerExpression)
                     {
-                        this.Visit(exp);
+                        emit("{ ");
+                        current_depth++;
 
-                        emit_line(",");
+                        foreach (var exp in node.Expressions)
+                        {
+                            this.Visit(exp);
+
+                            emit(", ");
+                        }
+
+                        current_depth--;
+                        emit(" }");
                     }
+                    else
+                    {
+                        emit_line("{");
+                        current_depth++;
 
-                    current_depth--;
-                    emit("}");
+                        foreach (var exp in node.Expressions)
+                        {
+                            this.Visit(exp);
+
+                            emit_line(",");
+                        }
+
+                        current_depth--;
+                        emit("}");
+                    }
                 }
             }
 
             public override void VisitArrayCreationExpression(ArrayCreationExpressionSyntax node)
             {
-                var type = node.Type;
-
-                emit("new ");
-
-                Visit(node.Type);
-
-                if (node.Initializer != null)
+                if (lang == TargetLang.TypeScript)
                 {
-                    emit(" ");
-                    Visit(node.Initializer);
+                    var type = node.Type;
+
+                    if (node.Initializer != null)
+                    {
+                        emit(" ");
+                        Visit(node.Initializer);
+                    }
+                    else
+                    {
+                        emit("[]");
+                    }
+                }
+                else
+                {
+                    var type = node.Type;
+
+                    emit("new ");
+
+                    Visit(node.Type);
+
+                    if (node.Initializer != null)
+                    {
+                        emit(" ");
+                        Visit(node.Initializer);
+                    }
                 }
             }
 
             public override void VisitObjectCreationExpression(ObjectCreationExpressionSyntax node)
             {
-                var type = (IdentifierNameSyntax)node.Type;
-
-                emit($"new {type.Identifier.Text}");
-
-                Visit(node.ArgumentList);
-
-                if (node.Initializer != null)
+                if (lang == TargetLang.TypeScript)
                 {
-                    emit_line("");
-                    Visit(node.Initializer);
+                    var type = (IdentifierNameSyntax)node.Type;
+
+                    if (node.Initializer == null)
+                    {
+                        emit("new ");
+                        Visit(node.Type);
+//                        emit($"new {type.Identifier.Text}");
+
+                        Visit(node.ArgumentList);
+                    }
+                    else
+                    {
+                        emit_line("");
+                        Visit(node.Initializer);
+                    }
+                }
+                else
+                {
+                    var type = (IdentifierNameSyntax)node.Type;
+
+                    emit($"new {type.Identifier.Text}");
+
+                    Visit(node.ArgumentList);
+
+                    if (node.Initializer != null)
+                    {
+                        emit_line("");
+                        Visit(node.Initializer);
+                    }
                 }
             }
 
@@ -911,12 +991,54 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public override void VisitIdentifierName(IdentifierNameSyntax node)
             {
-                emit($"{node.Identifier.Text}");
+                string name = node.Identifier.Text;
+
+                if (node.Parent.Kind() == SyntaxKind.VariableDeclaration
+                     || node.Parent.Kind() == SyntaxKind.MethodDeclaration
+                     || node.Parent.Kind() == SyntaxKind.SimpleMemberAccessExpression
+                     || node.Parent.Kind() == SyntaxKind.ForEachStatement
+                     || node.Parent.Kind() == SyntaxKind.Parameter
+                     || node.Parent.Kind() == SyntaxKind.ObjectCreationExpression)
+                {
+                    name = convert_type(name);
+                }
+
+                emit(name);
+            }
+            
+            public override void VisitInvocationExpression(InvocationExpressionSyntax node)
+            {
+                string func_name = node.Expression.ToString();
+                func_name = convert_function(func_name);
+
+                if (lang == TargetLang.TypeScript)
+                {
+                    if (func_name == "rand.Next")
+                    {
+                        string a = node.ArgumentList.Arguments[0].ToString();
+                        string b = node.ArgumentList.Arguments[1].ToString();
+                        emit($"Math.floor((Math.random() * ({b} - {a})) + {a})");
+                        return;
+                    }
+
+                    if (func_name == "System.Threading.Thread.Sleep")
+                    {
+                        string a = node.ArgumentList.Arguments[0].ToString();
+                        emit($"await new Promise(r => setTimeout(r, {a}))");
+                        return;
+                    }
+                }
+
+                emit(func_name);
+
+                Visit(node.ArgumentList);
             }
 
             public override void VisitPredefinedType(PredefinedTypeSyntax node)
             {
-                emit($"{node.Keyword.Text}");
+                string name = node.Keyword.Text;
+                name = convert_type(name);
+                emit(name);
             }
 
             public override void VisitArrayRankSpecifier(ArrayRankSpecifierSyntax node)
@@ -942,6 +1064,10 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public override void VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
             {
+                /*foreach (var statement in node.Body.Statements)
+                {
+                    Visit(statement);
+                }*/
             }
 
             public override void VisitArrayType(ArrayTypeSyntax node)
@@ -956,49 +1082,99 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public void VisitVariableDeclarator(VariableDeclaratorSyntax node, TypeSyntax type)
             {
-                var type_dec = src.Model.GetTypeInfo(type);
+                if (lang == TargetLang.TypeScript)
+                {
+//                    if (node.Parent.Parent.Kind() == SyntaxKind.LocalDeclarationStatement)
+                    {
+                        emit("let ");
+                    }
 
-                if (type is PredefinedTypeSyntax)
-                {
-                    Visit(type);
-                }
-                else if (type is ArrayTypeSyntax)
-                {
-                    Visit(type);
-                }
-                else if (type is IdentifierNameSyntax)
-                {
-                    Visit(type);
+                    emit($"{node.Identifier.Text}");
+
+                    emit(": ");
+
+                    var type_dec = src.Model.GetTypeInfo(type);
+
+                    if (type is PredefinedTypeSyntax)
+                    {
+                        Visit(type);
+                    }
+                    else if (type is ArrayTypeSyntax)
+                    {
+                        Visit(type);
+                    }
+                    else if (type is IdentifierNameSyntax)
+                    {
+                        Visit(type);
+                    }
+                    else
+                    {
+                        throw new ApplicationException($"VisitVariableDeclarator: {type.GetType().ToString()}");
+                    }
+
+                    if (node.Initializer != null)
+                    {
+                        emit(" = ");
+
+                        var value = node.Initializer.Value;
+
+                        base.Visit(value);
+                    }
+
+                    emit_line(";");
                 }
                 else
                 {
-                    throw new ApplicationException($"VisitVariableDeclarator: {type.GetType().ToString()}");
+                    var type_dec = src.Model.GetTypeInfo(type);
+
+                    if (type is PredefinedTypeSyntax)
+                    {
+                        Visit(type);
+                    }
+                    else if (type is ArrayTypeSyntax)
+                    {
+                        Visit(type);
+                    }
+                    else if (type is IdentifierNameSyntax)
+                    {
+                        Visit(type);
+                    }
+                    else
+                    {
+                        throw new ApplicationException($"VisitVariableDeclarator: {type.GetType().ToString()}");
+                    }
+
+                    emit($" {node.Identifier.Text}");
+
+                    if (node.Initializer != null)
+                    {
+                        emit(" = ");
+
+                        var value = node.Initializer.Value;
+
+                        base.Visit(value);
+                    }
+
+                    emit_line(";");
                 }
-
-                emit($" {node.Identifier.Text}");
-
-                if (node.Initializer != null)
-                {
-                    emit(" = ");
-
-                    var value = node.Initializer.Value;
-
-                    base.Visit(value);
-                }
-
-                emit_line(";");
             }
 
             public override void VisitVariableDeclaration(VariableDeclarationSyntax node)
             {
                 foreach (var v in node.Variables)
                 {
-                    //emit($"{type_dec.Type.Name} {v.Identifier.Text}");
-
                     VisitVariableDeclarator(v, node.Type);
-
-                    //emit_line(";");
                 }
+            }
+
+            public override void VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)
+            {
+                Visit(node.Declaration);
+            }
+
+            public override void VisitFieldDeclaration(FieldDeclarationSyntax node)
+            {
+                //Visit(node.Declaration);
             }
 
             public override void VisitBlock(BlockSyntax node)
@@ -1017,16 +1193,23 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             public override void VisitClassDeclaration(ClassDeclarationSyntax node)
             {
-                emit_line($"class {node.Identifier.Text}");
-                emit_line("{");
+                if (lang == TargetLang.TypeScript)
+                {
+                    base.VisitClassDeclaration(node);
+                }
+                else
+                {
+                    emit_line($"class {node.Identifier.Text}");
+                    emit_line("{");
 
-                current_depth++;
+                    current_depth++;
 
-                base.VisitClassDeclaration(node);
+                    base.VisitClassDeclaration(node);
 
-                current_depth--;
+                    current_depth--;
 
-                emit_line("}");
+                    emit_line("}");
+                }
             }
 
             public override string ToString()
@@ -1040,10 +1223,10 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
         void generate_tests(GeneratedCodeForLang ret)
         {
-            TestWalker w = new TestWalker(cs_tests);
-
             var test_class = cs_tests.Root.DescendantNodes().OfType<ClassDeclarationSyntax>().Where(c => c.Identifier.Text == "VPNRPCTest").First();
 
+            CcWalker w = new CcWalker(cs_tests, TargetLang.TypeScript);
+            //CcWalker w = new CcWalker(cs_tests, TargetLang.CSharp);
             w.Visit(test_class);
 
             WriteLine(w.ToString());
@@ -1055,9 +1238,9 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
             //generate_types(ret);
 
-            //generate_stubs(ret);
+            generate_stubs(ret);
 
-            generate_tests(ret);
+            //generate_tests(ret);
 
             return ret;
         }
