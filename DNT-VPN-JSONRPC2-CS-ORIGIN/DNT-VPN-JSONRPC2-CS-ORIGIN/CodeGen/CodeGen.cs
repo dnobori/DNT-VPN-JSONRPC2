@@ -7,6 +7,7 @@ using System.IO;
 using System.Text;
 using System.Linq;
 using static System.Console;
+using System.Xml.Linq;
 
 namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 {
@@ -235,6 +236,22 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
         public GeneratedCode TypeScript = new GeneratedCode();
     }
 
+    static class CodeGenExtensions
+    {
+        public static string GetDocumentStr(this ISymbol sym)
+        {
+            if (sym == null) return "";
+            string xml = sym.GetDocumentationCommentXml();
+            if (string.IsNullOrEmpty(xml)) return "";
+            XDocument doc = XDocument.Parse(xml);
+            var summary = doc.Descendants("summary").FirstOrDefault();
+            string str = summary.Value;
+            if (string.IsNullOrEmpty(str)) return "";
+            str = str.Trim();
+            return str;
+        }
+    }
+
     class CodeGen
     {
         CSharpSourceCode cs_types, cs_stubs, cs_tests;
@@ -269,6 +286,12 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
             foreach (ClassDeclarationSyntax c in class_list)
             {
                 StringWriter ts = new StringWriter();
+
+                string doc = model.GetDeclaredSymbol(c).GetDocumentStr();
+                if (string.IsNullOrEmpty(doc) == false)
+                {
+                    ts.WriteLine($"/** {doc} */");
+                }
 
                 ts.WriteLine($"export class {c.Identifier.Text}");
                 ts.WriteLine("{");
@@ -383,7 +406,15 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                                 if (string.IsNullOrEmpty(json_name) == false) field_name = json_name;
                                 if (json_name_has_special_char) field_name = $"[\"{json_name}\"]";
 
+                                string doc2 = member.GetDocumentStr();
+                                if (string.IsNullOrEmpty(doc2) == false)
+                                {
+                                    ts.WriteLine($"    /** {doc2} */");
+                                }
+
                                 ts.WriteLine($"    public {field_name}: {ts_type} = {default_value};");
+
+                                ts.WriteLine();
                             }
                             break;
 
@@ -395,7 +426,10 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                     }
                 }
 
-                ts.WriteLine();
+                if (string.IsNullOrEmpty(doc) == false)
+                {
+                    ts.WriteLine($"    /** Constructor for the '{c.Identifier.Text}' class: {doc} */");
+                }
                 ts.WriteLine($"    public constructor(init?: Partial<{c.Identifier.Text}>)");
                 ts.WriteLine("    {");
                 ts.WriteLine("        Object.assign(this, init);");
@@ -413,6 +447,12 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
             {
                 StringWriter ts = new StringWriter();
 
+                string doc = model.GetDeclaredSymbol(e).GetDocumentStr();
+                if (string.IsNullOrEmpty(doc) == false)
+                {
+                    ts.WriteLine($"/** {doc} */");
+                }
+
                 ts.WriteLine($"export enum {e.Identifier.Text}");
                 ts.WriteLine("{");
 
@@ -423,7 +463,15 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                         case IFieldSymbol field:
                             if (field.IsConst && field.IsDefinition)
                             {
+                                string doc2 = member.GetDocumentStr();
+                                if (string.IsNullOrEmpty(doc2) == false)
+                                {
+                                    ts.WriteLine($"    /** {doc2} */");
+                                }
+
                                 ts.WriteLine($"    {field.Name} = {field.ConstantValue},");
+
+                                ts.WriteLine();
                             }
                             break;
                     }
@@ -481,6 +529,12 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                 string str = str_syntax.Token.Text;
 
                 StringWriter ts = new StringWriter();
+
+                string doc2 = method.GetDocumentStr();
+                if (string.IsNullOrEmpty(doc2) == false)
+                {
+                    ts.WriteLine($"    /** {doc2} */");
+                }
 
                 if (method.Parameters.Length == 0)
                 {
@@ -579,7 +633,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                 }
             }
 
-            void emit_line(string str) => emit(str + "\r\n");
+            void emit_line(string str = "") => emit(str + "\r\n");
 
             void emit(string str, bool new_line)
             {
@@ -621,6 +675,15 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                 if (lang == TargetLang.TypeScript)
                 {
                     if (node.Identifier.Text == "print_object") return;
+
+                    emit_line();
+
+                    var sem = src.Model.GetDeclaredSymbol(node);
+                    string doc2 = sem.GetDocumentStr();
+                    if (string.IsNullOrEmpty(doc2) == false)
+                    {
+                        emit_line($"/** {doc2} */");
+                    }
 
                     emit("async function ");
                     emit(node.Identifier.Text);

@@ -24,6 +24,9 @@ namespace DNT_VPN_JSONRPC
             api = new VpnServerRpc("127.0.0.1", 443, "microsoft", "");
         }
 
+        /// <summary>
+        /// Tests all VPN APIs
+        /// </summary>
         public void Test_All()
         {
             int b, c, f;
