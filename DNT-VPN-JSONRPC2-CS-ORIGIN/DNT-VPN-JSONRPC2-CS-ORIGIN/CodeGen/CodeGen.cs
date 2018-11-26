@@ -383,7 +383,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                                 if (string.IsNullOrEmpty(json_name) == false) field_name = json_name;
                                 if (json_name_has_special_char) field_name = $"[\"{json_name}\"]";
 
-                                ts.WriteLine($"    {field_name}: {ts_type} = {default_value};");
+                                ts.WriteLine($"    public {field_name}: {ts_type} = {default_value};");
                             }
                             break;
 
@@ -1075,7 +1075,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                     if (func_name == "System.Threading.Thread.Sleep")
                     {
                         string a = node.ArgumentList.Arguments[0].ToString();
-                        emit($"await new Promise(r => setTimeout(r, {a}))");
+                        emit($"await new Promise((r) => setTimeout(r, {a}))");
                         return;
                     }
                 }
