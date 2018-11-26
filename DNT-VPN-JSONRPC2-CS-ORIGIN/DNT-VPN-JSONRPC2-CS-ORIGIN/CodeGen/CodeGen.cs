@@ -285,6 +285,8 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                         if (json_name.IndexOf(':') != -1 || json_name.IndexOf('.') != -1) json_name_has_special_char = true;
                     }
 
+                    string default_value = "\"\"";
+
                     switch (member)
                     {
                         case IFieldSymbol field:
@@ -298,6 +300,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                                         case "UInt32":
                                         case "UInt64":
                                             ts_type = "number";
+                                            default_value = "0";
                                             break;
 
                                         case "String":
@@ -306,16 +309,19 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
                                         case "Boolean":
                                             ts_type = "boolean";
+                                            default_value = "false";
                                             break;
 
                                         case "DateTime":
                                             ts_type = "Date";
+                                            default_value = "new Date()";
                                             break;
 
                                         default:
                                             if (type.TypeKind == TypeKind.Enum)
                                             {
                                                 ts_type = type.Name;
+                                                default_value = "0";
                                                 break;
                                             }
                                             throw new ApplicationException($"{c.Identifier}.{member.Name}: type.Name = {type.Name}");
@@ -324,6 +330,8 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
                                 case SymbolKind.ArrayType:
                                     ITypeSymbol type2 = ((IArrayTypeSymbol)type).ElementType;
+
+                                    default_value = "[]";
 
                                     switch (type2.Kind)
                                     {
@@ -345,6 +353,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
                                                 case "Byte":
                                                     ts_type = "Uint8Array";
+                                                    default_value = "new Uint8Array([])";
                                                     break;
 
                                                 default:
@@ -374,7 +383,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                                 if (string.IsNullOrEmpty(json_name) == false) field_name = json_name;
                                 if (json_name_has_special_char) field_name = $"[\"{json_name}\"]";
 
-                                ts.WriteLine($"    {field_name}?: {ts_type};");
+                                ts.WriteLine($"    {field_name}: {ts_type} = {default_value};");
                             }
                             break;
 
@@ -385,6 +394,12 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                             throw new ApplicationException($"{c.Identifier}.{member.Name}: type = {member.GetType()}");
                     }
                 }
+
+                ts.WriteLine();
+                ts.WriteLine($"    public constructor(init?: Partial<{c.Identifier.Text}>)");
+                ts.WriteLine("    {");
+                ts.WriteLine("        Object.assign(this, init);");
+                ts.WriteLine("    }");
 
                 ts.WriteLine("}");
                 ts.WriteLine();
@@ -477,7 +492,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                 }
                 else
                 {
-                    ts.WriteLine($"    public {method_name} = (in_param?: {ret_type_name}): Promise<{ret_type_name}> =>");
+                    ts.WriteLine($"    public {method_name} = (in_param: {ret_type_name}): Promise<{ret_type_name}> =>");
                     ts.WriteLine("    {");
                     ts.WriteLine($"        return this.CallAsync<{ret_type_name}>({str}, in_param);");
                     ts.WriteLine("    }");
@@ -636,7 +651,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
             {
                 if (lang == TargetLang.TypeScript)
                 {
-                    emit($"{node.Identifier.Text}?");
+                    emit($"{node.Identifier.Text}");
                     emit(": ");
                     Visit(node.Type);
                 }
@@ -767,7 +782,7 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                     emit(node.Identifier.Text);
                     emit(" of ");
                     Visit(node.Expression);
-                    emit_line("!)");
+                    emit_line(")");
                     Visit(node.Statement);
                 }
                 else
@@ -965,8 +980,11 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                     }
                     else
                     {
-                        emit_line("");
+                        emit("new ");
+                        Visit(node.Type);
+                        emit_line("(");
                         Visit(node.Initializer);
+                        emit(")");
                     }
                 }
                 else
