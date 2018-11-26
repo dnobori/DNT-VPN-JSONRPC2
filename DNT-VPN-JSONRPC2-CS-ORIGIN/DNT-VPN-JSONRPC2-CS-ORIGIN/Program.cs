@@ -16,11 +16,18 @@ namespace DNT_VPN_JSONRPC
         {
             //Console.WriteLine(CodeGenUtil.ProjectDir);
 
-            CodeGen g = new CodeGen();
+            if (true)
+            {
+                CodeGen g = new CodeGen();
 
-            g.Test();
+                g.Test();
+            }
+            else
+            {
+                VPNRPCTest test = new VPNRPCTest();
 
-            //VPNRPCTest test = new VPNRPCTest();
+                test.Test_All();
+            }
 
             //int i = 0;
 

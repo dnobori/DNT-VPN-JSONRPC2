@@ -275,6 +275,16 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
                 foreach (var member in model.GetDeclaredSymbol(c).GetMembers())
                 {
+                    string json_name = "";
+                    bool json_name_has_special_char = false;
+                    var atts = member.GetAttributes();
+                    var y = atts.Where(x => x.AttributeClass.Name == "JsonPropertyAttribute").FirstOrDefault();
+                    if (y != null)
+                    {
+                        json_name = y.ConstructorArguments.FirstOrDefault().Value.ToString();
+                        if (json_name.IndexOf(':') != -1 || json_name.IndexOf('.') != -1) json_name_has_special_char = true;
+                    }
+
                     switch (member)
                     {
                         case IFieldSymbol field:
@@ -359,7 +369,12 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
 
                             if (string.IsNullOrEmpty(ts_type) == false)
                             {
-                                ts.WriteLine($"    {field.Name}?: {ts_type};");
+                                string field_name = field.Name;
+
+                                if (string.IsNullOrEmpty(json_name) == false) field_name = json_name;
+                                if (json_name_has_special_char) field_name = $"[\"{json_name}\"]";
+
+                                ts.WriteLine($"    {field_name}?: {ts_type};");
                             }
                             break;
 
@@ -1003,7 +1018,25 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
                     name = convert_type(name);
                 }
 
-                emit(name);
+                var sym = src.Model.GetSymbolInfo(node);
+                string json_name = "";
+                bool json_name_has_special_char = false;
+                var atts = sym.Symbol.GetAttributes();
+                var y = atts.Where(x => x.AttributeClass.Name == "JsonPropertyAttribute").FirstOrDefault();
+                if (y != null)
+                {
+                    json_name = y.ConstructorArguments.FirstOrDefault().Value.ToString();
+                    if (json_name.IndexOf(':') != -1 || json_name.IndexOf('.') != -1) json_name_has_special_char = true;
+                }
+
+                string field_name = name;
+                if (lang == TargetLang.TypeScript)
+                {
+                    if (string.IsNullOrEmpty(json_name) == false) field_name = json_name;
+                    if (json_name_has_special_char) field_name = $"[\"{json_name}\"]";
+                }
+
+                emit(field_name);
             }
             
             public override void VisitInvocationExpression(InvocationExpressionSyntax node)
@@ -1229,18 +1262,18 @@ namespace DNT_VPN_JSONRPC2_CS_ORIGIN.CodeGen
             //CcWalker w = new CcWalker(cs_tests, TargetLang.CSharp);
             w.Visit(test_class);
 
-            WriteLine(w.ToString());
+            ret.TypeScript.Tests.PartList.Add(new GeneratedCodePart() { Seq = 0, Text = w.ToString() });
         }
 
         public GeneratedCodeForLang GenerateCodes()
         {
             GeneratedCodeForLang ret = new GeneratedCodeForLang();
 
-            //generate_types(ret);
+            generate_types(ret);
 
             generate_stubs(ret);
 
-            //generate_tests(ret);
+            generate_tests(ret);
 
             return ret;
         }

@@ -192,6 +192,8 @@ namespace SoftEther.JsonRpc
 
             string req_string = req.ObjectToJson();
 
+            //Console.WriteLine($"req: {req_string}");
+
             HttpContent content = new StringContent(req_string, Encoding.UTF8, "application/json");
 
             foreach (string key in this.HttpHeaders.Keys)
